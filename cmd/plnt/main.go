@@ -59,11 +59,15 @@ func writeFeed(fn string, items []*gofeed.Item) error {
 }
 
 func main() {
+	forceFromCache := flag.Bool("force_from_cache",
+		false,
+		"force loading feeds from cache (prevents any network access). useful for a rapid feedback cycle during development")
 	flag.Parse()
 	log.Printf("ohai")
 	ctx := context.Background()
 	// TODO: load configuration from toml file? what config does planet use?
 	aggr := &plnt.Aggregator{
+		ForceFromCache: *forceFromCache,
 		Feeds: []plnt.Feed{
 			{
 				ShortName: "sur5r",
