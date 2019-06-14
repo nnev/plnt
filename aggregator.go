@@ -3,6 +3,7 @@ package plnt
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -37,7 +38,7 @@ type Aggregator struct {
 	ForceFromCache bool // force loading all files from cache for rapid development
 }
 
-func (a *Aggregator) from(r io.Reader, shortname string) (*gofeed.Feed, error) {
+func (a *Aggregator) from(r io.Reader, feed *Feed) (*gofeed.Feed, error) {
 	parser := gofeed.NewParser()
 	f, err := parser.Parse(r)
 	if err != nil {
@@ -47,9 +48,10 @@ func (a *Aggregator) from(r io.Reader, shortname string) (*gofeed.Feed, error) {
 	items := make([]*gofeed.Item, 0, len(f.Items))
 	for _, i := range f.Items {
 		if i.PublishedParsed == nil {
-			log.Printf("[%s] dropping post %v: no published date", shortname, i) // TODO: post title
+			log.Printf("[%s] dropping post %v: no published date", feed.ShortName, i) // TODO: post title
 			continue
 		}
+		i.Title = fmt.Sprintf("[%s] %s", feed.Title, i.Title)
 		items = append(items, i)
 	}
 	f.Items = items
@@ -83,7 +85,7 @@ func (a *Aggregator) fetchFeed(ctx context.Context, feed *Feed) (*gofeed.Feed, e
 		return a.fromCache(feed)
 	}
 	defer resp.Body.Close()
-	f, err := a.from(resp.Body, feed.ShortName)
+	f, err := a.from(resp.Body, feed)
 	if err != nil {
 		log.Printf("[%s] falling back to cache due to fetch error: %v", feed.ShortName, err)
 		return a.fromCache(feed)

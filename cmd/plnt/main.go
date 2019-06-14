@@ -96,7 +96,6 @@ func main() {
 		log.Fatalf("Fetch: %v", err)
 	}
 	// TODO: need to canonicalize all relative URLs, i.e. parse the HTML?
-	// TODO: prefix the post titles with the blog from which they are from
 
 	log.Printf("got %d items", len(items))
 	if err := writeFeed("/tmp/feed.atom", items); err != nil {
