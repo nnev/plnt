@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"flag"
+	"io/ioutil"
 	"log"
 	"text/template"
 
+	"github.com/BurntSushi/toml"
 	"github.com/google/renameio"
 	"github.com/gorilla/feeds"
 	"github.com/mmcdole/gofeed"
@@ -58,38 +60,48 @@ func writeFeed(fn string, items []*gofeed.Item) error {
 	return renameio.WriteFile(fn, []byte(atom), 0644)
 }
 
+type config struct {
+	CacheDir string               `toml:"cachedir"`
+	Feeds    map[string]plnt.Feed `toml:"feed"`
+}
+
+func loadConfig(b []byte) (*config, error) {
+	var cfg config
+	if err := toml.Unmarshal(b, &cfg); err != nil {
+		return nil, err
+	}
+	for shortname, feed := range cfg.Feeds {
+		feed.ShortName = shortname
+		cfg.Feeds[shortname] = feed
+	}
+	return &cfg, nil
+}
+
 func main() {
 	forceFromCache := flag.Bool("force_from_cache",
 		false,
 		"force loading feeds from cache (prevents any network access). useful for a rapid feedback cycle during development")
+	configPath := flag.String("config",
+		"/etc/plnt.toml",
+		"path to the configuration file")
 	flag.Parse()
-	log.Printf("ohai")
 	ctx := context.Background()
-	// TODO: load configuration from toml file? what config does planet use?
+
+	b, err := ioutil.ReadFile(*configPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	cfg, err := loadConfig(b)
+	if err != nil {
+		log.Fatal(err)
+	}
+	var feeds []plnt.Feed
+	for _, f := range cfg.Feeds {
+		feeds = append(feeds, f)
+	}
 	aggr := &plnt.Aggregator{
 		ForceFromCache: *forceFromCache,
-		Feeds: []plnt.Feed{
-			{
-				ShortName: "sur5r",
-				Title:     "sur5r/blog",
-				// ATOM feed does not work; chokes on
-				// “<479BAFEE.4040500@secure-endpoints.com>” in
-				// https://blogs.noname-ev.de/sur5r/index.php?/archives/11-guid.html
-				URL: "https://blogs.noname-ev.de/sur5r/index.php?/feeds/index.rss2",
-			},
-
-			{
-				ShortName: "cherti",
-				Title:     "Insanity Industries",
-				URL:       "https://insanity.industries/index.xml",
-			},
-
-			{
-				ShortName: "secure",
-				Title:     "sECuREs Website",
-				URL:       "https://michael.stapelberg.ch/feed.xml",
-			},
-		},
+		Feeds:          feeds,
 	}
 	items, err := aggr.Fetch(ctx)
 	if err != nil {

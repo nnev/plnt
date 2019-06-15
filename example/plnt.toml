@@ -1,0 +1,81 @@
+[feed.sur5r]
+title = "sur5r/blog"
+# ATOM feed does not work; chokes on
+# “<479BAFEE.4040500@secure-endpoints.com>” in
+# https://blogs.noname-ev.de/sur5r/index.php?/archives/11-guid.html
+url = "https://blogs.noname-ev.de/sur5r/index.php?/feeds/index.rss2"
+
+[feed.cherti]
+title = "Insanity Industries"
+url = "https://insanity.industries/index.xml"
+
+[feed.secure]
+title = "sECuREs website"
+url = "https://michael.stapelberg.ch/feed.xml"
+
+[feed.nncli]
+title = "CLI-Tools Blog"
+url = "https://blogs.noname-ev.de/commandline-tools/feeds/index.rss2"
+
+[feed.craegga]
+title = "craegga"
+url = "https://blogs.noname-ev.de/craegga/feeds/index.rss2"
+
+[feed.nnev]
+title = "NoName e.V."
+url = "https://blogs.noname-ev.de/verein/feeds/index.rss2"
+
+[feed.phil]
+title = "phil_fry"
+url = "https://weblogs.idlecrew.de/phil?tempskin=_rss2"
+
+[feed.tabasco]
+title = "TabascoEye"
+url = "https://weblogs.idlecrew.de/tabasco?tempskin=_rss2"
+
+# Broken
+#[http://moritz.augsburger.name/feeds/index.rss2]
+
+[feed.philsoup]
+title = "phil_fry soup"
+url = "http://soup.wobbl.es/rss"
+
+[feed.shl]
+title = "shl"
+url = "http://blog.ociru.net/atom.xml"
+
+[feed.mist]
+title = "mist"
+url = "http://blog.mist.name/feeds/index.rss2"
+
+[feed.atsutane]
+title = "atsutane"
+url = "http://www.atsutane.de/atom.xml"
+
+[feed.rzl]
+title = "RaumZeitLabor"
+url = "https://raumzeitlabor.de/feed/"
+
+[feed.moredread]
+title = "Moredreads Blog"
+url = "http://www.moredread.name/atom.xml"
+
+[feed.xeen]
+title = "xeens Blog"
+url = "https://blog.yrden.de/atom.xml"
+
+[feed.mero]
+title = "Mero’s Blog"
+url = "https://blog.merovius.de/atom.xml"
+
+[feed.rami]
+title = "Raphael Michel"
+url = "https://www.raphaelmichel.de/blog/feed.xml"
+
+[feed.koebi]
+title = "koebi"
+url = "https://blog.ezelo.de/index.xml"
+
+[feed.mfh]
+title = "michael-herbst.com"
+url = "https://michael-herbst.com/feeds/all.atom.xml"

@@ -20,8 +20,8 @@ import (
 
 type Feed struct {
 	ShortName string // used in the state directory name, e.g. “sur5r-blog”
-	Title     string // human-readable, e.g. “sur5r’s Hardware Blog”
-	URL       string
+	Title     string `toml:"title"` // human-readable, e.g. “sur5r’s Hardware Blog”
+	URL       string `toml:"url"`
 }
 
 func (f *Feed) cachePath() string {
@@ -49,8 +49,13 @@ func (a *Aggregator) from(r io.Reader, feed *Feed) (*gofeed.Feed, error) {
 	items := make([]*gofeed.Item, 0, len(f.Items))
 	for _, i := range f.Items {
 		if i.PublishedParsed == nil {
-			log.Printf("[%s] dropping post %v: no published date", feed.ShortName, i) // TODO: post title
-			continue
+			// fall back to the updated date, if any
+			i.Published = i.Updated
+			i.PublishedParsed = i.UpdatedParsed
+			if i.PublishedParsed == nil {
+				log.Printf("[%s] dropping post %q: neither published date nor updated date set", feed.ShortName, i.Title)
+				continue
+			}
 		}
 		i.Title = fmt.Sprintf("[%s] %s", feed.Title, i.Title)
 		items = append(items, i)
@@ -85,6 +90,7 @@ func (a *Aggregator) fetchFeed(ctx context.Context, feed *Feed) (*gofeed.Feed, e
 	if !modTime.IsZero() {
 		req.Header.Set("If-Modified-Since", modTime.Format(http.TimeFormat))
 	}
+	// TODO: set user agent
 	req = req.WithContext(ctx)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
