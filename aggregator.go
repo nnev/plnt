@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/google/renameio"
 	"github.com/mmcdole/gofeed"
@@ -72,11 +73,17 @@ func (a *Aggregator) fetchFeed(ctx context.Context, feed *Feed) (*gofeed.Feed, e
 	if a.ForceFromCache {
 		return a.fromCache(feed)
 	}
-	// TODO: use cache modtime and set if-modified-since to skip transfer/parse/normalize
+	var modTime time.Time
+	if st, err := os.Stat(feed.cachePath()); err == nil {
+		modTime = st.ModTime()
+	}
 	log.Printf("[%s] fetching %s", feed.ShortName, feed.URL)
 	req, err := http.NewRequest("GET", feed.URL, nil)
 	if err != nil {
 		return nil, err
+	}
+	if !modTime.IsZero() {
+		req.Header.Set("If-Modified-Since", modTime.Format(http.TimeFormat))
 	}
 	req = req.WithContext(ctx)
 	resp, err := http.DefaultClient.Do(req)
@@ -85,6 +92,13 @@ func (a *Aggregator) fetchFeed(ctx context.Context, feed *Feed) (*gofeed.Feed, e
 		return a.fromCache(feed)
 	}
 	defer resp.Body.Close()
+	if got, want := resp.StatusCode, http.StatusOK; got != want {
+		if resp.StatusCode == http.StatusNotModified {
+			return a.fromCache(feed)
+		}
+		log.Printf("[%s] falling back to cache due to fetch error: unexpected status code: got %v, want %v", feed.ShortName, got, want)
+		return a.fromCache(feed)
+	}
 	f, err := a.from(resp.Body, feed)
 	if err != nil {
 		log.Printf("[%s] falling back to cache due to fetch error: %v", feed.ShortName, err)
