@@ -137,7 +137,7 @@ func (a *Aggregator) fetchFeed(ctx context.Context, feed *Feed) (*gofeed.Feed, e
 	if !modTime.IsZero() {
 		req.Header.Set("If-Modified-Since", modTime.Format(http.TimeFormat))
 	}
-	// TODO: set user agent
+	req.Header.Set("User-Agent", "https://github.com/nnev/plnt")
 	req = req.WithContext(ctx)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
