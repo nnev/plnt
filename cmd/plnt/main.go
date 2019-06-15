@@ -107,7 +107,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Fetch: %v", err)
 	}
-	// TODO: need to canonicalize all relative URLs, i.e. parse the HTML?
 
 	log.Printf("got %d items", len(items))
 	if err := writeFeed("/tmp/feed.atom", items); err != nil {

@@ -1,6 +1,7 @@
 package plnt
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,10 +12,13 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/renameio"
 	"github.com/mmcdole/gofeed"
+	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -39,7 +43,45 @@ type Aggregator struct {
 	ForceFromCache bool // force loading all files from cache for rapid development
 }
 
-func (a *Aggregator) from(r io.Reader, feed *Feed) (*gofeed.Feed, error) {
+func makeAbsolute(content, baseURL string) (string, error) {
+	nodes, err := html.ParseFragment(strings.NewReader(content), &html.Node{
+		Type:     html.ElementNode,
+		Data:     "body",
+		DataAtom: atom.Body,
+	})
+	if err != nil {
+		return "", err
+	}
+	var f func(*html.Node)
+	f = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "img" {
+			for idx, a := range n.Attr {
+				if a.Key != "src" {
+					continue
+				}
+				if strings.Contains(a.Val, "://") {
+					continue // already absolute
+				}
+				// TODO(later): is there a more elegant way to join baseURL with a.Val in terms of path?
+				a.Val = strings.TrimSuffix(baseURL, "/") + a.Val
+				n.Attr[idx] = a
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			f(c)
+		}
+	}
+	var out bytes.Buffer
+	for _, n := range nodes {
+		f(n)
+		if err := html.Render(&out, n); err != nil {
+			return "", err
+		}
+	}
+	return out.String(), nil
+}
+
+func from(r io.Reader, feed *Feed) (*gofeed.Feed, error) {
 	parser := gofeed.NewParser()
 	f, err := parser.Parse(r)
 	if err != nil {
@@ -58,6 +100,11 @@ func (a *Aggregator) from(r io.Reader, feed *Feed) (*gofeed.Feed, error) {
 			}
 		}
 		i.Title = fmt.Sprintf("[%s] %s", feed.Title, i.Title)
+		var err error
+		i.Content, err = makeAbsolute(i.Content, feed.URL)
+		if err != nil {
+			return nil, fmt.Errorf("makeAbsolute(%s): %v", feed.ShortName, err)
+		}
 		items = append(items, i)
 	}
 	f.Items = items
@@ -65,7 +112,7 @@ func (a *Aggregator) from(r io.Reader, feed *Feed) (*gofeed.Feed, error) {
 	return f, nil
 }
 
-func (a *Aggregator) fromCache(feed *Feed) (*gofeed.Feed, error) {
+func fromCache(feed *Feed) (*gofeed.Feed, error) {
 	b, err := ioutil.ReadFile(feed.cachePath())
 	if err != nil {
 		return nil, err
@@ -76,7 +123,7 @@ func (a *Aggregator) fromCache(feed *Feed) (*gofeed.Feed, error) {
 
 func (a *Aggregator) fetchFeed(ctx context.Context, feed *Feed) (*gofeed.Feed, error) {
 	if a.ForceFromCache {
-		return a.fromCache(feed)
+		return fromCache(feed)
 	}
 	var modTime time.Time
 	if st, err := os.Stat(feed.cachePath()); err == nil {
@@ -95,20 +142,20 @@ func (a *Aggregator) fetchFeed(ctx context.Context, feed *Feed) (*gofeed.Feed, e
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Printf("[%s] falling back to cache due to fetch error: %v", feed.ShortName, err)
-		return a.fromCache(feed)
+		return fromCache(feed)
 	}
 	defer resp.Body.Close()
 	if got, want := resp.StatusCode, http.StatusOK; got != want {
 		if resp.StatusCode == http.StatusNotModified {
-			return a.fromCache(feed)
+			return fromCache(feed)
 		}
 		log.Printf("[%s] falling back to cache due to fetch error: unexpected status code: got %v, want %v", feed.ShortName, got, want)
-		return a.fromCache(feed)
+		return fromCache(feed)
 	}
-	f, err := a.from(resp.Body, feed)
+	f, err := from(resp.Body, feed)
 	if err != nil {
 		log.Printf("[%s] falling back to cache due to fetch error: %v", feed.ShortName, err)
-		return a.fromCache(feed)
+		return fromCache(feed)
 	}
 	// Exhaust the reader to make HTTP connection pooling/keepalive work:
 	ioutil.ReadAll(resp.Body)
