@@ -23,8 +23,8 @@ url = "https://sur5r.net/"
 	if got, want := cfg.CacheDir, "/tmp/my/plnt-cache"; got != want {
 		t.Errorf("Unexpected cfg.CacheDir: got %q, want %q", got, want)
 	}
-	want := map[string]plnt.Feed{
-		"sur5r": plnt.Feed{
+	want := map[string]plnt.FeedConfig{
+		"sur5r": plnt.FeedConfig{
 			ShortName: "sur5r",
 			Title:     "sur5r’s blog",
 			URL:       "https://sur5r.net/",

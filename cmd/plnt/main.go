@@ -6,44 +6,134 @@ import (
 	"flag"
 	"io/ioutil"
 	"log"
+	"strings"
 	"text/template"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/google/renameio"
 	"github.com/gorilla/feeds"
-	"github.com/mmcdole/gofeed"
 	"github.com/nnev/plnt"
 	"github.com/nnev/plnt/internal/f2f"
 )
 
-var htmlTmpl = template.Must(template.New("").Parse(`<!DOCTYPE html>
-<html>
-  <head>
-    <title>plnt</title>
-  </head>
-  <body>
-    <ul>
-    {{ range $idx, $item := .Items }}
-      <li>item {{ $idx }}, title {{ $item.Title }}</li>
-    {{ end }}
-    </ul>
-  </body>
+// TODO: group posts by date
+// TODO: group posts by feed
+var htmlTmpl = template.Must(template.New("").Funcs(template.FuncMap{
+	"formatDay": func(t *time.Time) string {
+		return t.Format("2006-01-02")
+	},
+	"formatPublished": func(t *time.Time) string {
+		return t.Format("2006-01-02 15:04")
+	},
+	"formatLastUpdated": func(t *time.Time) string {
+		return t.Format("2006-01-02 15:04")
+	},
+	"joinStrings": func(s []string) string {
+		return strings.Join(s, ", ")
+	},
+}).Parse(`<!DOCTYPE html>
+<head>
+<title>{{ .Name }}</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta name="generator" content="plnt">
+<link rel="stylesheet" href="planet.css" type="text/css">
+<link rel="alternate" href="/atom.xml" title="{{ .Name }}" type="application/atom+xml">
+</head>
+
+<body>
+<h1>{{ .Name }}</h1>
+
+{{ range $idx, $item := .Items }}
+
+<div class="daygroup">
+<h2>{{ formatDay $item.PublishedParsed }}</h2>
+
+<div class="channelgroup">
+<h3><a href="{{ $item.FeedLink }}" title="{{ $item.FeedTitle }}">{{ $item.FeedTitle }}</a></h3>
+
+<div class="entrygroup">
+<h4><a href="{{ $item.Link }}">{{ $item.Title }}</a></h4>
+<div class="entry">
+<div class="content">
+{{ $item.Content }}
+</div>
+
+<p class="date">
+<a href="{{ $item.Link }}">{{ if $item.Author }}by {{ $item.Author.Name }}{{ end }}{{ if $item.PublishedParsed }} at {{ formatPublished $item.PublishedParsed }}{{ end }}
+{{ $cat := joinStrings $item.Categories }}
+{{ if $cat }}
+under {{ $cat }}
+{{ end }}
+</a>
+</p>
+</div>
+</div>
+
+</div>
+</div>
+{{ end }}
+
+
+<div class="sidebar">
+<img src="images/logo.png" width="136" height="136" alt="">
+
+<h2>Subscriptions</h2>
+<ul>
+{{ range $idx, $feed := .Feeds }}
+<li>
+<a href="{{ $feed.Link }}" title="subscribe"><img src="images/feed-icon-10x10.png" alt="(feed)"></a>
+<a href="{{ $feed.Link }}" title="{{ $feed.Title }}">{{ $feed.Title }}</a>
+</li>
+{{ end }}
+</ul>
+
+<p>
+<strong>Last updated:</strong><br>
+{{ formatLastUpdated .LastUpdated }}<br>
+<em>All times are UTC.</em><br>
+<br>
+Powered by:<br>
+plnt
+</p>
+
+<p>
+<h2>Planetarium:</h2>
+<ul>
+<li><a href="http://www.planetapache.org/">Planet Apache</a></li>
+<li><a href="http://planet.freedesktop.org/">Planet freedesktop.org</a></li>
+<li><a href="http://planet.gnome.org/">Planet GNOME</a></li>
+<li><a href="http://planet.debian.net/">Planet Debian</a></li>
+<li><a href="http://planet.fedoraproject.org/">Planet Fedora</a></li>
+<li><a href="http://planets.sun.com/">Planet Sun</a></li>
+<li><a href="http://www.planetplanet.org/">more...</a></li>
+</ul>
+</p>
+</div>
+</body>
 </html>
 `))
 
-func writeHTML(fn string, items []*gofeed.Item) error {
+func writeHTML(fn string, feeds []*plnt.Feed, items []plnt.Item) error {
 	var buf bytes.Buffer
+	lastUpdated := time.Now().UTC()
 	if err := htmlTmpl.Execute(&buf, struct {
-		Items []*gofeed.Item
+		Items       []plnt.Item
+		Feeds       []*plnt.Feed
+		Name        string
+		LastUpdated *time.Time
 	}{
-		Items: items,
+		Items:       items,
+		Feeds:       feeds,
+		Name:        "Planet NoName e.V.", // TODO
+		LastUpdated: &lastUpdated,
 	}); err != nil {
 		return err
 	}
 	return renameio.WriteFile(fn, buf.Bytes(), 0644)
 }
 
-func writeFeed(fn string, items []*gofeed.Item) error {
+func writeFeed(fn string, items []plnt.Item) error {
 	feed := feeds.Feed{
 		Title: "merged",
 		Link: &feeds.Link{
@@ -51,7 +141,7 @@ func writeFeed(fn string, items []*gofeed.Item) error {
 		},
 	}
 	for _, i := range items {
-		feed.Add(f2f.GofeedToGorillaFeed(i))
+		feed.Add(f2f.GofeedToGorillaFeed(&i.Item))
 	}
 	atom, err := feed.ToAtom()
 	if err != nil {
@@ -61,8 +151,8 @@ func writeFeed(fn string, items []*gofeed.Item) error {
 }
 
 type config struct {
-	CacheDir string               `toml:"cachedir"`
-	Feeds    map[string]plnt.Feed `toml:"feed"`
+	CacheDir string                     `toml:"cachedir"`
+	Feeds    map[string]plnt.FeedConfig `toml:"feed"`
 }
 
 func loadConfig(b []byte) (*config, error) {
@@ -95,24 +185,24 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	var feeds []plnt.Feed
+	var feedsCfg []plnt.FeedConfig
 	for _, f := range cfg.Feeds {
-		feeds = append(feeds, f)
+		feedsCfg = append(feedsCfg, f)
 	}
 	aggr := &plnt.Aggregator{
 		ForceFromCache: *forceFromCache,
-		Feeds:          feeds,
+		Feeds:          feedsCfg,
 	}
-	items, err := aggr.Fetch(ctx)
+	feeds, items, err := aggr.Fetch(ctx)
 	if err != nil {
 		log.Fatalf("Fetch: %v", err)
 	}
 
 	log.Printf("got %d items", len(items))
-	if err := writeFeed("/tmp/feed.atom", items); err != nil {
+	if err := writeFeed("/tmp/atom.xml", items); err != nil {
 		log.Fatalf("writing aggregated feed: %v", err)
 	}
-	if err := writeHTML("/tmp/out.html", items); err != nil {
+	if err := writeHTML("/tmp/out.html", feeds, items); err != nil {
 		log.Fatalf("Writing HTML output: %v", err)
 	}
 }

@@ -24,13 +24,26 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+type Item struct {
+	gofeed.Item
+
+	FeedTitle string
+	FeedLink  string
+}
+
 type Feed struct {
+	Title string
+	Link  string
+	Items []Item
+}
+
+type FeedConfig struct {
 	ShortName string // used in the state directory name, e.g. “sur5r-blog”
 	Title     string `toml:"title"` // human-readable, e.g. “sur5r’s Hardware Blog”
 	URL       string `toml:"url"`
 }
 
-func (f *Feed) cachePath() string {
+func (f *FeedConfig) cachePath() string {
 	// TODO: make cache dir overridable via config
 	cacheDir, err := os.UserCacheDir()
 	if err != nil {
@@ -40,7 +53,7 @@ func (f *Feed) cachePath() string {
 }
 
 type Aggregator struct {
-	Feeds []Feed
+	Feeds []FeedConfig
 
 	ForceFromCache bool // force loading all files from cache for rapid development
 }
@@ -83,14 +96,13 @@ func makeAbsolute(content, baseURL string) (string, error) {
 	return out.String(), nil
 }
 
-func from(r io.Reader, feed *Feed) (*gofeed.Feed, error) {
+func from(r io.Reader, feed *FeedConfig) (*Feed, error) {
 	parser := gofeed.NewParser()
 	f, err := parser.Parse(r)
 	if err != nil {
 		return nil, err
 	}
 
-	items := make([]*gofeed.Item, 0, len(f.Items))
 	u, err := url.Parse(feed.URL)
 	if err != nil {
 		return nil, err
@@ -98,6 +110,7 @@ func from(r io.Reader, feed *Feed) (*gofeed.Feed, error) {
 	u.Path = path.Dir(u.Path)
 	baseURL := u.String()
 
+	items := make([]Item, 0, len(f.Items))
 	for _, i := range f.Items {
 		if i.PublishedParsed == nil {
 			// fall back to the updated date, if any
@@ -108,29 +121,35 @@ func from(r io.Reader, feed *Feed) (*gofeed.Feed, error) {
 				continue
 			}
 		}
-		i.Title = fmt.Sprintf("[%s] %s", feed.Title, i.Title)
 		var err error
 		i.Content, err = makeAbsolute(i.Content, baseURL)
 		if err != nil {
 			return nil, fmt.Errorf("makeAbsolute(%s): %v", feed.ShortName, err)
 		}
-		items = append(items, i)
+		items = append(items, Item{
+			Item:      *i,
+			FeedTitle: feed.Title,
+			FeedLink:  f.Link,
+		})
 	}
-	f.Items = items
 
-	return f, nil
+	return &Feed{
+		Title: f.Title,
+		Link:  f.Link,
+		Items: items,
+	}, nil
 }
 
-func fromCache(feed *Feed) (*gofeed.Feed, error) {
+func fromCache(feed *FeedConfig) (*Feed, error) {
 	b, err := ioutil.ReadFile(feed.cachePath())
 	if err != nil {
 		return nil, err
 	}
-	var f gofeed.Feed
+	var f Feed
 	return &f, json.Unmarshal(b, &f)
 }
 
-func (a *Aggregator) fetchFeed(ctx context.Context, feed *Feed) (*gofeed.Feed, error) {
+func (a *Aggregator) fetchFeed(ctx context.Context, feed *FeedConfig) (*Feed, error) {
 	if a.ForceFromCache {
 		return fromCache(feed)
 	}
@@ -185,9 +204,9 @@ func (a *Aggregator) fetchFeed(ctx context.Context, feed *Feed) (*gofeed.Feed, e
 	return f, nil
 }
 
-func (a *Aggregator) Fetch(ctx context.Context) ([]*gofeed.Item, error) {
+func (a *Aggregator) Fetch(ctx context.Context) ([]*Feed, []Item, error) {
 	eg, ctx := errgroup.WithContext(ctx)
-	feeds := make([]*gofeed.Feed, len(a.Feeds))
+	feeds := make([]*Feed, len(a.Feeds))
 	for idx, f := range a.Feeds {
 		idx, f := idx, f // copy
 		eg.Go(func() error {
@@ -196,14 +215,18 @@ func (a *Aggregator) Fetch(ctx context.Context) ([]*gofeed.Item, error) {
 			if err != nil {
 				return err
 			}
+			parsed.Title = f.Title // override
+			if parsed.Link == "" {
+				parsed.Link = f.URL // fallback
+			}
 			feeds[idx] = parsed
 			return nil
 		})
 	}
 	if err := eg.Wait(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	var items []*gofeed.Item
+	var items []Item
 	for _, f := range feeds {
 		items = append(items, f.Items...)
 	}
@@ -211,5 +234,5 @@ func (a *Aggregator) Fetch(ctx context.Context) ([]*gofeed.Item, error) {
 	sort.Slice(items, func(i, j int) bool {
 		return items[i].PublishedParsed.After(*items[j].PublishedParsed)
 	})
-	return items, nil
+	return feeds, items, nil
 }
