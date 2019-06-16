@@ -175,6 +175,13 @@ func main() {
 	configPath := flag.String("config",
 		"/etc/plnt.toml",
 		"path to the configuration file")
+	feedPath := flag.String("feed_path",
+		"atom.xml",
+		"path to write the output ATOM feed to")
+	outputPath := flag.String("html_path",
+		"index.html",
+		"path to write the output HTML file to")
+
 	flag.Parse()
 	ctx := context.Background()
 
@@ -203,10 +210,10 @@ func main() {
 	}
 
 	log.Printf("got %d items", len(items))
-	if err := writeFeed("/tmp/atom.xml", items); err != nil {
+	if err := writeFeed(*feedPath, items); err != nil {
 		log.Fatalf("writing aggregated feed: %v", err)
 	}
-	if err := writeHTML("/tmp/out.html", feeds, items); err != nil {
+	if err := writeHTML(*outputPath, feeds, items); err != nil {
 		log.Fatalf("Writing HTML output: %v", err)
 	}
 }
