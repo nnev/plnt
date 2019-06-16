@@ -198,6 +198,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Fetch: %v", err)
 	}
+	if len(items) > 30 {
+		items = items[:30]
+	}
 
 	log.Printf("got %d items", len(items))
 	if err := writeFeed("/tmp/atom.xml", items); err != nil {
