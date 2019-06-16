@@ -9,7 +9,9 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -89,6 +91,13 @@ func from(r io.Reader, feed *Feed) (*gofeed.Feed, error) {
 	}
 
 	items := make([]*gofeed.Item, 0, len(f.Items))
+	u, err := url.Parse(feed.URL)
+	if err != nil {
+		return nil, err
+	}
+	u.Path = path.Dir(u.Path)
+	baseURL := u.String()
+
 	for _, i := range f.Items {
 		if i.PublishedParsed == nil {
 			// fall back to the updated date, if any
@@ -101,7 +110,7 @@ func from(r io.Reader, feed *Feed) (*gofeed.Feed, error) {
 		}
 		i.Title = fmt.Sprintf("[%s] %s", feed.Title, i.Title)
 		var err error
-		i.Content, err = makeAbsolute(i.Content, feed.URL)
+		i.Content, err = makeAbsolute(i.Content, baseURL)
 		if err != nil {
 			return nil, fmt.Errorf("makeAbsolute(%s): %v", feed.ShortName, err)
 		}
