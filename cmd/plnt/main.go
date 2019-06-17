@@ -56,8 +56,11 @@ var htmlTmpl = template.Must(template.New("").Funcs(template.FuncMap{
 <h4><a href="{{ $item.Link }}">{{ $item.Title }}</a></h4>
 <div class="entry">
 <div class="content">
+{{ if (eq $item.Content "") }}
 {{ $item.Description }}
+{{ else }}
 {{ $item.Content }}
+{{ end }}
 </div>
 
 <p class="date">
